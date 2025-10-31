@@ -31,6 +31,7 @@ from bokeh.models import (  # type: ignore
     DatetimeTickFormatter,
     WheelZoomTool,
     LinearColorMapper,
+    Div
 )
 try:
     from bokeh.models import CustomJSTickFormatter
@@ -747,15 +748,17 @@ return this.labels[index] || "";
         **kwargs  # type: ignore
     )
 
+    # Add Expand button
     toggle_full = Toggle(label="Expand OHLC", active=False, button_type="primary", width=140)
-
     js_args = dict(others=figs, fig_ohlc=fig_ohlc, original_height=fig_ohlc.height or 400)
     toggle_full.js_on_change('active', CustomJS(args=js_args, code=_EXPAND_CHART_CALLBACK))
 
-    layout_with_toggle = column(toggle_full, fig, sizing_mode='stretch_width')
-    show(layout_with_toggle, browser=None if open_browser else 'none')
+    # Add space bottom
+    footer = Div(text='', height=50)
 
-    return layout_with_toggle
+    final_layout = column(toggle_full, fig, footer, sizing_mode='stretch_width')
+    show(final_layout, browser=None if open_browser else 'none')
+    return final_layout
 
 
 def plot_heatmaps(heatmap: pd.Series, agg: Union[Callable, str], ncols: int,

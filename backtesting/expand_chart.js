@@ -8,9 +8,7 @@ if (!cb_obj._saved_state) {
         heights: others_list.map(f => (f ? f.height : null)),
         sizing_modes: others_list.map(f => (f ? f.sizing_mode : null)),
         ohlc_height: (ohlc ? ohlc.height : null),
-        ohlc_sizing: (ohlc ? ohlc.sizing_mode : null),
-        // NUEVO: Guardar el estado original del eje X de OHLC
-        ohlc_xaxis_visible: (ohlc && ohlc.xaxis && ohlc.xaxis.length > 0) ? ohlc.xaxis[0].visible : null
+        ohlc_sizing: (ohlc ? ohlc.sizing_mode : null)
     };
 }
 
@@ -43,12 +41,6 @@ if (active) {
         // (Corrección anterior)
         ohlc.sizing_mode = 'stretch_width';
         ohlc.height = Math.max(window.innerHeight - 80, 200);
-
-        // NUEVO: Mostrar el eje X en el gráfico OHLC
-        if (ohlc.xaxis && ohlc.xaxis.length > 0) {
-            ohlc.xaxis[0].visible = true;
-        }
-
     } catch (e) {
         console.log('expand ohlc error:', e && e.message);
     }
@@ -66,6 +58,7 @@ if (active) {
             const s = saved.sizing_modes[i];
             if (h != null) f.height = h;
             f.sizing_mode = s;
+
         } catch (e) {
             console.log('restore figure error:', e && e.message);
         }
@@ -75,11 +68,6 @@ if (active) {
         // Restaurar OHLC
         ohlc.sizing_mode = saved.ohlc_sizing;
         if (saved.ohlc_height != null) ohlc.height = saved.ohlc_height;
-
-        // NUEVO: Restaurar la visibilidad original del eje X (ocultarlo)
-        if (ohlc.xaxis && ohlc.xaxis.length > 0) {
-            ohlc.xaxis[0].visible = saved.ohlc_xaxis_visible;
-        }
 
     } catch (e) {
         console.log('restore ohlc error:', e && e.message);
