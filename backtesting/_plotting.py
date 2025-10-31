@@ -190,7 +190,7 @@ def _maybe_resample_data(resample_rule, df, indicators, equity_data, trades):
 def plot(*, results: pd.Series,
          df: pd.DataFrame,
          indicators: List[_Indicator],
-         filename='', plot_width=None, plot_height=None,
+         filename='', plot_width=None, plot_height=None, autoscale_y: bool = False,
          plot_equity=True, plot_return=False, plot_pl=True,
          plot_volume=True, plot_drawdown=False, plot_trades=True,
          smooth_equity=False, relative_equity=True,
@@ -236,15 +236,25 @@ def plot(*, results: pd.Series,
     equity_data = equity_data.reset_index(drop=True)
     index = df.index
 
+    if autoscale_y:
+        tools = "xpan,xwheel_zoom,xwheel_pan,box_zoom,undo,redo,reset,save",
+        active_scroll = 'xwheel_zoom'
+        active_drag = 'xpan'
+    else:
+        tools = "pan,xpan,ypan,wheel_zoom,xwheel_zoom,ywheel_zoom,box_zoom,undo,redo,reset,save",
+        active_scroll = 'wheel_zoom'
+        active_drag = 'pan'
+
     new_bokeh_figure = partial(  # type: ignore[call-arg]
         _figure,
         x_axis_type='linear',
         width=plot_width,
         height=plot_height,
         # TODO: xwheel_pan on horizontal after https://github.com/bokeh/bokeh/issues/14363
-        tools="xpan,xwheel_zoom,xwheel_pan,box_zoom,undo,redo,reset,save",
-        active_drag='xpan',
-        active_scroll='xwheel_zoom')
+        tools=tools,
+        active_drag=active_drag,
+        active_scroll=active_scroll
+    )
 
     pad = (index[-1] - index[0]) / 20
 
@@ -297,9 +307,17 @@ return this.labels[index] || "";
 
     def new_indicator_figure(**kwargs):
         kwargs.setdefault('height', _INDICATOR_HEIGHT)
+
+        if autoscale_y:
+            active_scroll='xwheel_zoom'
+            active_drag = 'xpan'
+        else:
+            active_scroll = 'wheel_zoom'
+            active_drag = 'pan'
+
         fig = new_bokeh_figure(x_range=fig_ohlc.x_range,
-                               active_scroll='xwheel_zoom',
-                               active_drag='xpan',
+                               active_scroll=active_scroll,
+                               active_drag=active_drag,
                                **kwargs)
         fig.xaxis.visible = False
         fig.yaxis.minor_tick_line_color = None
@@ -611,11 +629,13 @@ return this.labels[index] || "";
                         r = fig.line(
                             'index', source_name, source=source,
                             line_color=color, line_width=1.3, **kwargs)
+
                     # Add dashed centerline just because
                     mean = try_(lambda: float(pd.Series(arr).mean()), default=np.nan)
                     if not np.isnan(mean) and (abs(mean) < .1 or
                                                round(abs(mean), 1) == .5 or
                                                round(abs(mean), -1) in (50, 100, 200)):
+
                         fig.add_layout(Span(location=float(mean), dimension='width',
                                             line_color='#666666', line_dash='dashed',
                                             level='underlay', line_width=.5))
@@ -670,8 +690,9 @@ return this.labels[index] || "";
     if plot_volume:
         custom_js_args.update(volume_range=fig_volume.y_range)
 
-    fig_ohlc.x_range.js_on_change('end', CustomJS(args=custom_js_args,
-                                                  code=_AUTOSCALE_JS_CALLBACK))
+    if autoscale_y:
+        fig_ohlc.x_range.js_on_change('end', CustomJS(args=custom_js_args,
+                                                      code=_AUTOSCALE_JS_CALLBACK))
 
     figs = figs_above_ohlc + [fig_ohlc] + figs_below_ohlc
     linked_crosshair = CrosshairTool(
