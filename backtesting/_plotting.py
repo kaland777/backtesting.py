@@ -42,11 +42,19 @@ from bokeh.layouts import gridplot
 from bokeh.palettes import Category10
 from bokeh.transform import factor_cmap, transform
 
+from bokeh.models import Toggle
+from bokeh.layouts import column
+
 from backtesting._util import _data_period, _as_list, _Indicator, try_
 
 with open(os.path.join(os.path.dirname(__file__), 'autoscale_cb.js'),
           encoding='utf-8') as _f:
     _AUTOSCALE_JS_CALLBACK = _f.read()
+
+
+with open(os.path.join(os.path.dirname(__file__), 'expand_chart.js'),
+          encoding='utf-8') as _f:
+    _EXPAND_CHART_CALLBACK = _f.read()
 
 IS_JUPYTER_NOTEBOOK = ('JPY_PARENT_PID' in os.environ or
                        'inline' in os.environ.get('MPLBACKEND', ''))
@@ -284,7 +292,7 @@ def plot(*, results: pd.Series,
     if is_datetime_index:
         fig_ohlc.xaxis.formatter = CustomJSTickFormatter(  # type: ignore[attr-defined]
             args=dict(axis=fig_ohlc.xaxis[0],
-                      formatter=DatetimeTickFormatter(days='%a, %d %b',
+                      formatter=DatetimeTickFormatter(days='%a, %d %b, %Y',
                                                       months='%m/%Y'),
                       source=source),
             code='''
@@ -293,6 +301,9 @@ this.labels = this.labels || formatter.doFormat(ticks
                                                 .filter(t => t !== undefined));
 return this.labels[index] || "";
         ''')
+
+        # Force the OHLC X axis to always be visible
+        fig_ohlc.xaxis.visible = True
 
     NBSP = '\N{NBSP}' * 4  # noqa: E999
     ohlc_extreme_values = df[['High', 'Low']].copy(deep=False)
@@ -472,11 +483,11 @@ return this.labels[index] || "";
 
     def _plot_volume_section():
         """Volume section"""
-        fig = new_indicator_figure(height=70, y_axis_label="Volume")
-        fig.yaxis.ticker.desired_num_ticks = 3
+        fig = new_indicator_figure(height=120, y_axis_label="Volume")
+        fig.yaxis.ticker.desired_num_ticks = 5
         fig.xaxis.formatter = fig_ohlc.xaxis[0].formatter
-        fig.xaxis.visible = True
-        fig_ohlc.xaxis.visible = False  # Show only Volume's xaxis
+        fig.xaxis.visible = False
+        # fig_ohlc.xaxis.visible = False  # Show only Volume's xaxis
         r = fig.vbar('index', BAR_WIDTH, 'Volume', source=source, color=inc_cmap)
         set_tooltips(fig, [('Volume', '@Volume{0.00 a}')], renderers=[r])
         fig.yaxis.formatter = NumeralTickFormatter(format="0 a")
@@ -735,8 +746,16 @@ return this.labels[index] || "";
         merge_tools=True,
         **kwargs  # type: ignore
     )
-    show(fig, browser=None if open_browser else 'none')
-    return fig
+
+    toggle_full = Toggle(label="Expand OHLC", active=False, button_type="primary", width=140)
+
+    js_args = dict(others=figs, fig_ohlc=fig_ohlc, original_height=fig_ohlc.height or 400)
+    toggle_full.js_on_change('active', CustomJS(args=js_args, code=_EXPAND_CHART_CALLBACK))
+
+    layout_with_toggle = column(toggle_full, fig, sizing_mode='stretch_width')
+    show(layout_with_toggle, browser=None if open_browser else 'none')
+
+    return layout_with_toggle
 
 
 def plot_heatmaps(heatmap: pd.Series, agg: Union[Callable, str], ncols: int,
