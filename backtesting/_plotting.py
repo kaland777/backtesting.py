@@ -120,7 +120,7 @@ def lightness(color, lightness=.94):
 
 
 _MAX_CANDLES = 10_000
-_INDICATOR_HEIGHT = 50
+_INDICATOR_HEIGHT = 120
 
 
 def _maybe_resample_data(resample_rule, df, indicators, equity_data, trades):
@@ -212,6 +212,7 @@ def plot(*, results: pd.Series,
     # We need to reset global Bokeh state, otherwise subsequent runs of
     # plot() contain some previous run's cruft data (was noticed when
     # TestPlot.test_file_size() test was failing).
+
     if not filename and not IS_JUPYTER_NOTEBOOK:
         filename = _windos_safe_filename(str(results._strategy))
     _bokeh_reset(filename)
