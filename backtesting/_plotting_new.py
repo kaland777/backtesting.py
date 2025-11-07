@@ -158,11 +158,11 @@ def _maybe_resample_data(resample_rule, df, indicators, equity_data, trades):
                       "See `Backtest.plot(resample=...)`")
 
     from .lib import OHLCV_AGG, TRADES_AGG, _EQUITY_AGG
-    df = df.resample(freq, label='right').agg(OHLCV_AGG).dropna()
+    df = df.resample(freq, label='right', closed='right').agg(OHLCV_AGG).dropna()
 
     def try_mean_first(indicator):
         nonlocal freq
-        resampled = indicator.df.fillna(np.nan).resample(freq, label='right')
+        resampled = indicator.df.fillna(np.nan).resample(freq, label='right', closed='right')
         try:
             return resampled.mean()
         except Exception:
@@ -179,7 +179,7 @@ def _maybe_resample_data(resample_rule, df, indicators, equity_data, trades):
     ]
     assert not indicators or indicators[0].df.index.equals(df.index)
 
-    equity_data = equity_data.resample(freq, label='right').agg(_EQUITY_AGG).dropna(how='all')
+    equity_data = equity_data.resample(freq, label='right', closed='right').agg(_EQUITY_AGG).dropna(how='all')
     assert equity_data.index.equals(df.index)
 
     def _weighted_returns(s, trades=trades):
@@ -193,11 +193,10 @@ def _maybe_resample_data(resample_rule, df, indicators, equity_data, trades):
                 mean_time = int(bars.loc[s.index].astype(np.int64).mean())
                 new_bar_idx = new_index.get_indexer([mean_time], method='nearest')[0]
                 return new_bar_idx
-
         return f
 
     if len(trades):  # Avoid pandas "resampling on Int64 index" error
-        trades = trades.assign(count=1).resample(freq, on='ExitTime', label='right').agg(dict(
+        trades = trades.assign(count=1).resample(freq, on='ExitTime', label='right', closed='right').agg(dict(
             TRADES_AGG,
             ReturnPct=_weighted_returns,
             count='sum',
@@ -657,9 +656,7 @@ return this.labels[index] || "";
                 stacklevel=4)
             return
 
-        df2 = (df.assign(_width=1).set_index('datetime')
-               .resample(resample_rule, label='left')
-               .agg(dict(OHLCV_AGG, _width='count')))
+        df2 = df.assign(_width=1).set_index('datetime').resample(resample_rule, label='left').agg(dict(OHLCV_AGG, _width='count'))
 
         # Check if resampling was downsampling; error on upsampling
         orig_freq = _data_period(df['datetime'])
@@ -672,25 +669,33 @@ return this.labels[index] || "";
                           stacklevel=4)
             return
 
-        df2.index = df2['_width'].cumsum().shift(1).fillna(0)
-        df2.index += df2['_width'] / 2 - .5
+        cumsum_width = df2['_width'].cumsum().shift(1).fillna(0)
+        df2.index = cumsum_width + (df2['_width'] / 2 - .5)
         df2['_width'] -= .1  # Candles don't touch
 
-        df2['inc'] = (df2.Close >= df2.Open).astype(int).astype(str)
+        df2['inc'] = (df2.Close >= df2.Open).astype(np.uint8).astype(str)
         df2.index.name = None
 
         source2 = ColumnDataSource(df2)
 
-        # Add levels to avoid z-fighting
-        seg = fig_ohlc.segment('index', 'High', 'index', 'Low', source=source2, color='#bbbbbb')
-        seg.level = 'underlay'
-
         colors_lighter = [lightness(BEAR_COLOR, .92),
                           lightness(BULL_COLOR, .92)]
+        lighter_cmap = factor_cmap('inc', colors_lighter, ['0', '1'])
 
         # Add levels to avoid z-fighting
-        vbar = fig_ohlc.vbar('index', '_width', 'Open', 'Close', source=source2, line_color=None,
-                             fill_color=factor_cmap('inc', colors_lighter, ['0', '1']))
+        seg = fig_ohlc.segment('index', 'High', 'index', 'Low', source=source2, color=lighter_cmap, line_width=3)
+        seg.level = 'underlay'
+
+        # Add levels to avoid z-fighting
+        vbar = fig_ohlc.vbar(
+            'index',
+            '_width',
+            'Open',
+            'Close',
+            source=source2,
+            line_color=None,
+            fill_color=lighter_cmap
+        )
         vbar.level = 'underlay'
 
     def _plot_ohlc():
