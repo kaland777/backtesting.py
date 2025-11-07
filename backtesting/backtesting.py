@@ -23,6 +23,8 @@ import pandas as pd
 from numpy.random import default_rng
 
 from ._plotting import plot  # noqa: I001
+from ._plotting_new import plot as plot_new  # noqa: I001
+
 from ._stats import compute_stats, dummy_stats
 from ._util import (
     SharedMemoryManager, _as_str, _Indicator, _Data, _batch, _indicator_warmup_nbars,
@@ -1732,7 +1734,7 @@ class Backtest:
                 raise RuntimeError('First issue `backtest.run()` to obtain results.')
             results = self._results
 
-        return plot(
+        return plot_new(
             results=results,
             df=self._data,
             indicators=results._strategy._indicators,

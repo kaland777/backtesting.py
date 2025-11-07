@@ -31,7 +31,9 @@ from bokeh.models import (  # type: ignore
     DatetimeTickFormatter,
     WheelZoomTool,
     LinearColorMapper,
-    Div
+    Div,
+    Spacer,
+    Toggle
 )
 
 try:
@@ -41,12 +43,9 @@ except ImportError:  # Bokeh < 3.0
 
 from bokeh.io import curdoc, output_notebook, output_file, show
 from bokeh.io.state import curstate
-from bokeh.layouts import gridplot
+from bokeh.layouts import gridplot, column, row
 from bokeh.palettes import Category10
 from bokeh.transform import factor_cmap, transform
-
-from bokeh.models import Toggle
-from bokeh.layouts import column
 
 from backtesting._util import _data_period, _as_list, _Indicator, try_
 
@@ -238,7 +237,7 @@ def plot(
     _bokeh_reset(filename)
 
     COLORS = [BEAR_COLOR, BULL_COLOR]
-    BAR_WIDTH = 0.8
+    BAR_WIDTH = .8
 
     assert df.index.equals(results['_equity_curve'].index)
     equity_data = results['_equity_curve'].copy(deep=False)
@@ -280,6 +279,7 @@ def plot(
         x_axis_type='linear',
         width=plot_width,
         height=plot_height,
+        output_backend="webgl",  # enable WebGL
         # TODO: xwheel_pan on horizontal after https://github.com/bokeh/bokeh/issues/14363
         tools=tools,
         active_drag=active_drag,
@@ -301,19 +301,29 @@ def plot(
     ) if index.size > 1 else {}
 
     fig_ohlc = new_bokeh_figure(**_kwargs)  # type: ignore[arg-type]
+
+    # Disable LOD to avoid flickering
+    fig_ohlc.lod_threshold = None
+
+    # Config bounds auto
+    if hasattr(fig_ohlc.x_range, 'bounds'):
+        fig_ohlc.x_range.bounds = 'auto'
+    if hasattr(fig_ohlc.y_range, 'bounds'):
+        fig_ohlc.y_range.bounds = 'auto'
+
     figs_above_ohlc, figs_below_ohlc = [], []
 
-    source = ColumnDataSource(df)
-    source.add((df.Close >= df.Open).values.astype(np.uint8).astype(str), 'inc')
+    # Pre-compute column 'inc' only once
+    df['inc'] = (df.Close >= df.Open).values.astype(np.uint8).astype(str)
 
-    trade_source = ColumnDataSource(
-        dict(
-            index=trades['ExitBar'],
-            datetime=trades['ExitTime'],
-            size=trades['Size'],
-            returns_positive=(trades['ReturnPct'] > 0).astype(int).astype(str),
-        )
-    )
+    source = ColumnDataSource(df)
+
+    trade_source = ColumnDataSource(dict(
+        index=trades['ExitBar'],
+        datetime=trades['ExitTime'],
+        size=trades['Size'],
+        returns_positive=(trades['ReturnPct'] > 0).astype(int).astype(str),
+    ))
 
     inc_cmap = factor_cmap('inc', COLORS, ['0', '1'])
     cmap = factor_cmap('returns_positive', COLORS, ['0', '1'])
@@ -368,9 +378,14 @@ return this.labels[index] || "";
                                active_scroll=active_scroll,
                                active_drag=active_drag,
                                **kwargs)
+
         fig.xaxis.visible = False
         fig.yaxis.minor_tick_line_color = None
         fig.yaxis.ticker.desired_num_ticks = 3
+
+        # Disable LOD
+        fig.lod_threshold = None
+
         return fig
 
     def set_tooltips(fig, tooltips=(), vline=True, renderers=()):
@@ -391,7 +406,8 @@ return this.labels[index] || "";
                 point_policy='follow_mouse',
                 renderers=renderers,
                 formatters=formatters,
-                tooltips=tooltips, mode='vline' if vline else 'mouse'
+                tooltips=tooltips,
+                mode='vline' if vline else 'mouse'
             )
         )
 
@@ -663,19 +679,30 @@ return this.labels[index] || "";
         df2.index.name = None
 
         source2 = ColumnDataSource(df2)
-        fig_ohlc.segment('index', 'High', 'index', 'Low', source=source2, color='#bbbbbb')
+
+        # Add levels to avoid z-fighting
+        seg = fig_ohlc.segment('index', 'High', 'index', 'Low', source=source2, color='#bbbbbb')
+        seg.level = 'underlay'
+
         colors_lighter = [lightness(BEAR_COLOR, .92),
                           lightness(BULL_COLOR, .92)]
 
-        fig_ohlc.vbar('index', '_width', 'Open', 'Close', source=source2, line_color=None,
-                      fill_color=factor_cmap('inc', colors_lighter, ['0', '1']))
+        # Add levels to avoid z-fighting
+        vbar = fig_ohlc.vbar('index', '_width', 'Open', 'Close', source=source2, line_color=None,
+                             fill_color=factor_cmap('inc', colors_lighter, ['0', '1']))
+        vbar.level = 'underlay'
 
     def _plot_ohlc():
         """Main OHLC bars"""
-        fig_ohlc.segment('index', 'High', 'index', 'Low', source=source, color="black",
-                         legend_label='OHLC')
+        # Assign levels correctly (wicks behind, body in front)
+        seg = fig_ohlc.segment('index', 'High', 'index', 'Low', source=source, color="black",
+                               legend_label='OHLC')
+        seg.level = 'underlay'
+
         r = fig_ohlc.vbar('index', BAR_WIDTH, 'Open', 'Close', source=source,
                           line_color="black", fill_color=inc_cmap, legend_label='OHLC')
+        r.level = 'overlay'
+
         return r
 
     def _plot_ohlc_trades():
@@ -683,13 +710,15 @@ return this.labels[index] || "";
         trade_source.add(trades[['EntryBar', 'ExitBar']].values.tolist(), 'position_lines_xs')
         trade_source.add(trades[['EntryPrice', 'ExitPrice']].values.tolist(), 'position_lines_ys')
 
-        fig_ohlc.multi_line(
+        ml = fig_ohlc.multi_line(
             xs='position_lines_xs',
             ys='position_lines_ys',
             source=trade_source, line_color=trades_cmap,
             legend_label=f'Trades ({len(trades)})',
             line_width=8, line_alpha=1, line_dash='dotted'
         )
+        # Trades above all
+        ml.level = 'overlay'
 
     def _plot_indicators():
         """Strategy indicators"""
@@ -774,6 +803,9 @@ return this.labels[index] || "";
                         r2 = fig.line(
                             'index', source_name, source=source,
                             line_color=color, line_width=1.4 if is_muted else 1.5, **kwargs)
+
+                    r2.level = 'overlay'
+
                     # r != r2
                     r2.muted = is_muted
 
@@ -895,13 +927,16 @@ return this.labels[index] || "";
 
     # Add Expand button
     toggle_full = Toggle(label="Expand OHLC", active=False, button_type="primary", width=140)
+
     js_args = dict(others=figs, fig_ohlc=fig_ohlc, original_height=fig_ohlc.height or 400)
     toggle_full.js_on_change('active', CustomJS(args=js_args, code=_EXPAND_CHART_CALLBACK))
+
+    button_row = row(Spacer(), toggle_full, Spacer(), sizing_mode='stretch_width')
 
     # Add space bottom
     footer = Div(text='', height=50)
 
-    final_layout = column(toggle_full, fig, footer, sizing_mode='stretch_width')
+    final_layout = column(button_row, fig, footer, sizing_mode='stretch_width')
     show(final_layout, browser=None if open_browser else 'none')
     return final_layout
 
