@@ -232,6 +232,7 @@ def plot(
     # We need to reset global Bokeh state, otherwise subsequent runs of
     # plot() contain some previous run's cruft data (was noticed when
     # TestPlot.test_file_size() test was failing).
+
     if not filename and not IS_JUPYTER_NOTEBOOK:
         filename = _windos_safe_filename(str(results._strategy))
     _bokeh_reset(filename)
@@ -931,7 +932,12 @@ return this.labels[index] || "";
     js_args = dict(others=figs, fig_ohlc=fig_ohlc, original_height=fig_ohlc.height or 400)
     toggle_full.js_on_change('active', CustomJS(args=js_args, code=_EXPAND_CHART_CALLBACK))
 
-    button_row = row(Spacer(), toggle_full, Spacer(), sizing_mode='stretch_width')
+    button_row = row(
+        Spacer(sizing_mode='stretch_width'),
+        toggle_full,
+        Spacer(sizing_mode='stretch_width'),
+        sizing_mode='stretch_width'
+    )
 
     # Add space bottom
     footer = Div(text='', height=50)
