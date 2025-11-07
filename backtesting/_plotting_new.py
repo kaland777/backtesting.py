@@ -129,12 +129,14 @@ _INDICATOR_HEIGHT = 120
 
 
 def _maybe_resample_data(resample_rule, df, indicators, equity_data, trades):
+
+    if resample_rule is False or len(df) <= _MAX_CANDLES:
+        return df, indicators, equity_data, trades
+
     if isinstance(resample_rule, str):
         freq = resample_rule
-    else:
-        if resample_rule is False or len(df) <= _MAX_CANDLES:
-            return df, indicators, equity_data, trades
 
+    else:
         freq_minutes = pd.Series({
             "1min": 1,
             "5min": 5,
@@ -307,8 +309,6 @@ def plot(
     fig_ohlc.lod_threshold = None
 
     # Config bounds auto
-    if hasattr(fig_ohlc.x_range, 'bounds'):
-        fig_ohlc.x_range.bounds = 'auto'
     if hasattr(fig_ohlc.y_range, 'bounds'):
         fig_ohlc.y_range.bounds = 'auto'
 
