@@ -57,6 +57,11 @@ with open(os.path.join(os.path.dirname(__file__), 'expand_chart.js'),
           encoding='utf-8') as _f:
     _EXPAND_CHART_CALLBACK = _f.read()
 
+with open(os.path.join(os.path.dirname(__file__), 'expand_chart_pnl.js'),
+          encoding='utf-8') as _f:
+    _EXPAND_CHART_PNL_CALLBACK = _f.read()
+
+
 IS_JUPYTER_NOTEBOOK = ('JPY_PARENT_PID' in os.environ or
                        'inline' in os.environ.get('MPLBACKEND', ''))
 
@@ -306,10 +311,6 @@ def plot(
 
     # Disable LOD to avoid flickering
     fig_ohlc.lod_threshold = None
-
-    # Config bounds auto
-    if hasattr(fig_ohlc.y_range, 'bounds'):
-        fig_ohlc.y_range.bounds = 'auto'
 
     figs_above_ohlc, figs_below_ohlc = [], []
 
@@ -719,7 +720,8 @@ return this.labels[index] || "";
         ml = fig_ohlc.multi_line(
             xs='position_lines_xs',
             ys='position_lines_ys',
-            source=trade_source, line_color=trades_cmap,
+            source=trade_source,
+            line_color=trades_cmap,
             legend_label=f'Trades ({len(trades)})',
             line_width=8, line_alpha=1, line_dash='dotted'
         )
@@ -856,7 +858,8 @@ return this.labels[index] || "";
         figs_above_ohlc.append(_plot_drawdown_section())
 
     if plot_pl:
-        figs_above_ohlc.append(_plot_pl_section())
+        fig_pl = _plot_pl_section()
+        figs_above_ohlc.append(fig_pl)
 
     if plot_volume:
         fig_volume = _plot_volume_section()
@@ -932,14 +935,38 @@ return this.labels[index] || "";
     )
 
     # Add Expand button
-    toggle_full = Toggle(label="Expand OHLC", active=False, button_type="primary", width=140)
+    toggle_full = Toggle(
+        label="Expand OHLC",
+        active=False,
+        button_type="primary",
+        width=140
+    )
+    js_args = dict(others=figs, fig_ohlc=fig_ohlc)
+    toggle_full.js_on_change(
+        'active',
+        CustomJS(args=js_args, code=_EXPAND_CHART_CALLBACK)
+    )
 
-    js_args = dict(others=figs, fig_ohlc=fig_ohlc, original_height=fig_ohlc.height or 400)
-    toggle_full.js_on_change('active', CustomJS(args=js_args, code=_EXPAND_CHART_CALLBACK))
+    # Add expand pnl
+    if 'fig_pl' in locals() and fig_pl is not None:
+        toggle_full_pnl = Toggle(label="Expand OHLC/PNL", active=False, button_type="primary", width=160)
+        js_args_pnl = dict(
+            others=figs,
+            fig_ohlc=fig_ohlc,
+            fig_pnl=fig_pl,
+        )
+        toggle_full_pnl.js_on_change(
+            'active',
+            CustomJS(args=js_args_pnl, code=_EXPAND_CHART_PNL_CALLBACK)
+        )
+    else:
+        toggle_full_pnl = None
 
     button_row = row(
         Spacer(sizing_mode='stretch_width'),
         toggle_full,
+        Spacer(width=10),
+        toggle_full_pnl,
         Spacer(sizing_mode='stretch_width'),
         sizing_mode='stretch_width'
     )
