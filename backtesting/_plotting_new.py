@@ -62,6 +62,11 @@ with open(os.path.join(os.path.dirname(__file__), 'expand_chart_pnl.js'),
     _EXPAND_CHART_PNL_CALLBACK = _f.read()
 
 
+with open(os.path.join(os.path.dirname(__file__), 'expand_results.js'),
+          encoding='utf-8') as _f:
+    _EXPAND_RESULTS_CALLBACK = _f.read()
+
+
 IS_JUPYTER_NOTEBOOK = ('JPY_PARENT_PID' in os.environ or
                        'inline' in os.environ.get('MPLBACKEND', ''))
 
@@ -338,8 +343,7 @@ def plot(
     if is_datetime_index:
         fig_ohlc.xaxis.formatter = CustomJSTickFormatter(  # type: ignore[attr-defined]
             args=dict(axis=fig_ohlc.xaxis[0],
-                      formatter=DatetimeTickFormatter(days='%a, %d %b, %Y',
-                                                      months='%m/%Y'),
+                      formatter=DatetimeTickFormatter(days='%a, %d %b, %Y', months='%m/%Y'),
                       source=source),
             code='''
 this.labels = this.labels || formatter.doFormat(ticks
@@ -382,7 +386,7 @@ return this.labels[index] || "";
 
         fig.xaxis.visible = False
         fig.yaxis.minor_tick_line_color = None
-        fig.yaxis.ticker.desired_num_ticks = 3
+        fig.yaxis.ticker.desired_num_ticks = 4
 
         # Disable LOD
         fig.lod_threshold = None
@@ -534,8 +538,7 @@ return this.labels[index] || "";
             .replace(' 00:00:00', '')
             .replace('(0 days ', '(')
         )
-
-        figs_above_ohlc.append(fig)
+        return fig
 
     def _plot_drawdown_section():
         """Drawdown section"""
@@ -557,6 +560,57 @@ return this.labels[index] || "";
 
         set_tooltips(fig, [('Drawdown', '@drawdown{-0.[0]%}')], renderers=[r])
         fig.yaxis.formatter = NumeralTickFormatter(format="-0.[0]%")
+
+        return fig
+
+    def _plot_buy_and_hold_section():
+        """Buy & Hold section"""
+        fig = new_indicator_figure(y_axis_label="Buy & Hold", height=80)
+
+        # Overwrite indicator default options
+        fig.xaxis.visible = True
+        fig.yaxis.ticker.desired_num_ticks = 4
+
+        fig.xaxis.formatter = CustomJSTickFormatter(  # type: ignore[attr-defined]
+            args=dict(axis=fig_ohlc.xaxis[0],
+                      formatter=DatetimeTickFormatter(days='%a, %d %b, %Y', months='%m/%Y'),
+                      source=source),
+            code='''
+        this.labels = this.labels || formatter.doFormat(ticks
+                                                        .map(i => source.data.datetime[i])
+                                                        .filter(t => t !== undefined));
+        return this.labels[index] || "";
+                ''')
+
+
+        buy_and_hold = (df['Close'] / df['Close'].iloc[0])
+        argmax = buy_and_hold.idxmax()
+
+        source.add(buy_and_hold, 'buy_hold')
+        r = fig.line('index', 'buy_hold', source=source, line_width=1.3)
+
+        price_format = '{:,.0f}%'
+
+        # Max value
+        fig.scatter(
+            argmax,
+            buy_and_hold[argmax],
+            legend_label='Peak ({})'.format( price_format.format( buy_and_hold[argmax] * 100) ),
+            color='red',
+            size=8
+        )
+
+        # Last value
+        fig.scatter(
+            index[-1],
+            buy_and_hold.iloc[-1],
+            legend_label='Final ({})'.format(price_format.format( buy_and_hold.iloc[-1] * 100 )),
+            color='blue',
+            size=8
+        )
+
+        set_tooltips(fig, [("Buy & Hold", "@buy_hold{0,0.[00]%}")], vline=True, renderers=[r])
+        fig.yaxis.formatter = NumeralTickFormatter(format="0,0.[00]%")
 
         return fig
 
@@ -848,14 +902,26 @@ return this.labels[index] || "";
 
     # Construct figure ...
 
-    if plot_equity:
-        _plot_equity_section()
+    fig_equity = _plot_equity_section()
+    figs_above_ohlc.append(fig_equity)
+    if not plot_equity:
+        fig_equity.visible = False
+        fig_equity.height = 1
 
     if plot_return:
-        _plot_equity_section(is_return=True)
+        fig_return = _plot_equity_section(is_return=True)
+        figs_above_ohlc.append(fig_return)
 
-    if plot_drawdown:
-        figs_above_ohlc.append(_plot_drawdown_section())
+    fig_drawdown = _plot_drawdown_section()
+    figs_above_ohlc.append(fig_drawdown)
+    if not plot_drawdown:
+        fig_drawdown.visible = False
+        fig_drawdown.height = 1
+
+    fig_buy_and_hold = _plot_buy_and_hold_section()
+    fig_buy_and_hold.visible = False
+    fig_buy_and_hold.height = 1
+    figs_above_ohlc.append(fig_buy_and_hold)
 
     if plot_pl:
         fig_pl = _plot_pl_section()
@@ -869,9 +935,11 @@ return this.labels[index] || "";
         _plot_superimposed_ohlc()
 
     ohlc_bars = _plot_ohlc()
+
     if plot_trades:
         _plot_ohlc_trades()
     indicator_figs = _plot_indicators()
+
     if reverse_indicators:
         indicator_figs = indicator_figs[::-1]
     figs_below_ohlc.extend(indicator_figs)
@@ -883,16 +951,17 @@ return this.labels[index] || "";
     source.add(ohlc_extreme_values.min(1), 'ohlc_low')
     source.add(ohlc_extreme_values.max(1), 'ohlc_high')
 
-    custom_js_args = dict(ohlc_range=fig_ohlc.y_range,
-                          source=source)
-    if plot_volume:
-        custom_js_args.update(volume_range=fig_volume.y_range)
-
     if autoscale_y:
+        custom_js_args = dict(ohlc_range=fig_ohlc.y_range,
+                              source=source)
+        if plot_volume:
+            custom_js_args.update(volume_range=fig_volume.y_range)
+
         fig_ohlc.x_range.js_on_change('end', CustomJS(args=custom_js_args,
                                                       code=_AUTOSCALE_JS_CALLBACK))
 
     figs = figs_above_ohlc + [fig_ohlc] + figs_below_ohlc
+
     linked_crosshair = CrosshairTool(
         dimensions='both', line_color='lightgrey',
         overlay=(Span(dimension="width", line_dash="dotted", line_width=1),
@@ -911,6 +980,7 @@ return this.labels[index] || "";
             f.legend.label_text_font_size = '8pt'
             f.legend.click_policy = "hide"
             f.legend.background_fill_alpha = .9
+
         f.min_border_left = 0
         f.min_border_top = 3
         f.min_border_bottom = 6
@@ -962,11 +1032,26 @@ return this.labels[index] || "";
     else:
         toggle_full_pnl = None
 
+    # Add Expand Global Results
+    toggle_full_results = Toggle(label="Expand Results", active=False, button_type="primary", width=160)
+    js_args_results = dict(
+        others=figs,
+        fig_equity=fig_equity,
+        fig_drawdown=fig_drawdown,
+        fig_buy_and_hold=fig_buy_and_hold
+    )
+    toggle_full_results.js_on_change(
+        'active',
+        CustomJS(args=js_args_results, code=_EXPAND_RESULTS_CALLBACK)
+    )
+
     button_row = row(
         Spacer(sizing_mode='stretch_width'),
         toggle_full,
         Spacer(width=10),
         toggle_full_pnl,
+        Spacer(width=10),
+        toggle_full_results,
         Spacer(sizing_mode='stretch_width'),
         sizing_mode='stretch_width'
     )
