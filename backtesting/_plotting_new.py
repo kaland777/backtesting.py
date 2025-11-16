@@ -417,7 +417,7 @@ return this.labels[index] || "";
         )
 
     def _plot_equity_section(is_return=False):
-        """Equity section"""
+
         # Max DD Dur. line
         equity = equity_data['Equity'].copy()
         dd_end = equity_data['DrawdownDuration'].idxmax()
@@ -569,7 +569,7 @@ return this.labels[index] || "";
 
         # Overwrite indicator default options
         fig.xaxis.visible = True
-        fig.yaxis.ticker.desired_num_ticks = 4
+        fig.yaxis.ticker.desired_num_ticks = 5
 
         fig.xaxis.formatter = CustomJSTickFormatter(  # type: ignore[attr-defined]
             args=dict(axis=fig_ohlc.xaxis[0],
@@ -963,9 +963,12 @@ return this.labels[index] || "";
     figs = figs_above_ohlc + [fig_ohlc] + figs_below_ohlc
 
     linked_crosshair = CrosshairTool(
-        dimensions='both', line_color='lightgrey',
-        overlay=(Span(dimension="width", line_dash="dotted", line_width=1),
-                 Span(dimension="height", line_dash="dotted", line_width=1)),
+        dimensions='both',
+        line_color='lightgrey',
+        overlay=(
+            Span(dimension="width", line_dash="dotted", line_width=1),
+            Span(dimension="height", line_dash="dotted", line_width=1)
+        ),
     )
 
     for f in figs:
