@@ -33,7 +33,9 @@ from bokeh.models import (  # type: ignore
     LinearColorMapper,
     Div,
     Spacer,
-    Toggle
+    Toggle,
+    DataTable,
+    TableColumn
 )
 
 try:
@@ -65,6 +67,11 @@ with open(os.path.join(os.path.dirname(__file__), 'expand_chart_pnl.js'),
 with open(os.path.join(os.path.dirname(__file__), 'expand_results.js'),
           encoding='utf-8') as _f:
     _EXPAND_RESULTS_CALLBACK = _f.read()
+
+
+with open(os.path.join(os.path.dirname(__file__), 'expand_metrics.js'),
+          encoding='utf-8') as _f:
+    _EXPAND_METRICS_CALLBACK = _f.read()
 
 
 IS_JUPYTER_NOTEBOOK = ('JPY_PARENT_PID' in os.environ or
@@ -900,6 +907,59 @@ return this.labels[index] || "";
 
         return indicator_figs
 
+    def _create_strategy_metrics_table():
+
+        display_results = results.copy()
+
+        strategy = None
+        if '_strategy' in display_results.index:
+            strategy = str(display_results['_strategy'])
+
+        # Crear estructura de datos para la tabla
+        table_data = {
+            'metric': ['strategy'],
+            'value': [strategy]
+        }
+
+        for key, value in results._strategy._params.items():
+            table_data['metric'].append(str(key))
+            table_data['value'].append(str(value))
+
+        display_results = display_results[~display_results.index.str.startswith('_')]
+        for key, value in display_results.items():
+
+            table_data['metric'].append(str(key))
+
+            # Formatear valores según su tipo
+            if isinstance(value, (int, np.integer)):
+                table_data['value'].append(f'{value:,}')
+
+            elif isinstance(value, (float, np.floating)):
+                table_data['value'].append(f'{value:.4f}')
+
+            else:
+                table_data['value'].append(str(value))
+
+        # Crear ColumnDataSource
+        table_source = ColumnDataSource(table_data)
+
+        # Definir columnas de la tabla
+        columns = [
+            TableColumn(field="metric", title="Metric", width=200),
+            TableColumn(field="value", title="Value", width=150),
+        ]
+        data_table = DataTable(
+            source=table_source,
+            columns=columns,
+            width=400,
+            height=400,
+            sizing_mode='stretch_height',
+            index_position=None,
+            selectable=False
+        )
+
+        return data_table
+
     # Construct figure ...
 
     fig_equity = _plot_equity_section()
@@ -943,6 +1003,9 @@ return this.labels[index] || "";
     if reverse_indicators:
         indicator_figs = indicator_figs[::-1]
     figs_below_ohlc.extend(indicator_figs)
+
+    table_metrics = _create_strategy_metrics_table()
+    table_metrics.visible = False
 
     _watermark(fig_ohlc)
 
@@ -998,7 +1061,7 @@ return this.labels[index] || "";
     if plot_width is None:
         kwargs['sizing_mode'] = 'stretch_width'
 
-    fig = gridplot(
+    fig_final = gridplot(
         figs,
         ncols=1,
         toolbar_location='right',
@@ -1048,6 +1111,17 @@ return this.labels[index] || "";
         CustomJS(args=js_args_results, code=_EXPAND_RESULTS_CALLBACK)
     )
 
+    # Add Expand Metrics
+    toggle_metrics = Toggle(label="Expand Metrics", active=False, button_type="primary", width=160)
+    js_args_metrics = dict(
+        table_metrics=table_metrics
+    )
+    toggle_metrics.js_on_change(
+        'active',
+        CustomJS(args=js_args_metrics, code=_EXPAND_METRICS_CALLBACK)
+    )
+
+
     button_row = row(
         Spacer(sizing_mode='stretch_width'),
         toggle_full,
@@ -1055,6 +1129,8 @@ return this.labels[index] || "";
         toggle_full_pnl,
         Spacer(width=10),
         toggle_full_results,
+        Spacer(width=10),
+        toggle_metrics,
         Spacer(sizing_mode='stretch_width'),
         sizing_mode='stretch_width'
     )
@@ -1062,7 +1138,13 @@ return this.labels[index] || "";
     # Add space bottom
     footer = Div(text='', height=50)
 
-    final_layout = column(button_row, fig, footer, sizing_mode='stretch_width')
+    final_layout = row(
+        column(button_row, fig_final, footer, sizing_mode='stretch_both'),
+        table_metrics,
+        sizing_mode='stretch_both'
+    )
+
+    # final_layout = column(button_row, fig_final, footer, _create_strategy_metrics_table(), sizing_mode='stretch_width')
     show(final_layout, browser=None if open_browser else 'none')
     return final_layout
 
