@@ -22,12 +22,13 @@ import numpy as np
 import pandas as pd
 from numpy.random import default_rng
 
-from ._plotting import plot  # noqa: I001
-from ._plotting_new import plot as plot_new  # noqa: I001
+# from ._plotting import plot  # noqa: I001
+from ._plotting_new import plot as plot_new
 
 from ._stats import compute_stats, dummy_stats
 from ._util import (
-    SharedMemoryManager, _as_str, _Indicator, _Data, _batch, _indicator_warmup_nbars,
+    SharedMemoryManager, _as_str, _Indicator,
+    _Data, _batch, _indicator_warmup_nbars,
     _strategy_indicators, patch, try_, _tqdm,
 )
 
@@ -47,7 +48,13 @@ class Strategy(metaclass=ABCMeta):
     `backtesting.backtesting.Strategy.next` to define
     your own strategy.
     """
-    def __init__(self, broker, data, params):
+
+    def __init__(
+            self,
+            broker: _Broker,
+            data: _Data,
+            params
+    ):
         self._indicators = []
         self._broker: _Broker = broker
         self._data: _Data = data
@@ -73,10 +80,17 @@ class Strategy(metaclass=ABCMeta):
             setattr(self, k, v)
         return params
 
-    def I(self,  # noqa: E743
-          func: Callable, *args,
-          name=None, plot=True, overlay=None, color=None, scatter=False,
-          **kwargs) -> np.ndarray:
+    def I(
+            self,  # noqa: E743
+            func: Callable,
+            *args,
+            name: str = None,
+            plot: bool = True,
+            overlay: bool = None,
+            color: str = None,
+            scatter: bool = False,
+            **kwargs
+    ) -> np.ndarray:
         """
         Declare an indicator. An indicator is just an array of values
         (or a tuple of such arrays in case of, e.g., MACD indicator),
@@ -123,6 +137,7 @@ class Strategy(metaclass=ABCMeta):
             strategy that uses a 200-bar MA).
             This can affect results.
         """
+
         def _format_name(name: str) -> str:
             return name.format(*map(_as_str, args),
                                **dict(zip(kwargs.keys(), map(_as_str, kwargs.values()))))
@@ -213,15 +228,19 @@ class Strategy(metaclass=ABCMeta):
 
     class __FULL_EQUITY(float):  # noqa: N801
         def __repr__(self): return '.9999'  # noqa: E704
+
     _FULL_EQUITY = __FULL_EQUITY(1 - sys.float_info.epsilon)
 
-    def buy(self, *,
+    def buy(
+            self,
+            *,
             size: float = _FULL_EQUITY,
             limit: Optional[float] = None,
             stop: Optional[float] = None,
             sl: Optional[float] = None,
             tp: Optional[float] = None,
-            tag: object = None) -> 'Order':
+            tag: object = None
+    ) -> 'Order':
         """
         Place a new long order and return it. For explanation of parameters, see `Order`
         and its properties.
@@ -238,13 +257,16 @@ class Strategy(metaclass=ABCMeta):
             "size must be a positive fraction of equity, or a positive whole number of units"
         return self._broker.new_order(size, limit, stop, sl, tp, tag)
 
-    def sell(self, *,
-             size: float = _FULL_EQUITY,
-             limit: Optional[float] = None,
-             stop: Optional[float] = None,
-             sl: Optional[float] = None,
-             tp: Optional[float] = None,
-             tag: object = None) -> 'Order':
+    def sell(
+            self,
+            *,
+            size: float = _FULL_EQUITY,
+            limit: Optional[float] = None,
+            stop: Optional[float] = None,
+            sl: Optional[float] = None,
+            tp: Optional[float] = None,
+            tag: object = None
+    ) -> 'Order':
         """
         Place a new short order and return it. For explanation of parameters, see `Order`
         and its properties.
@@ -328,6 +350,7 @@ class _Orders(tuple):
     """
     TODO: remove this class. Only for deprecation.
     """
+
     def cancel(self):
         """Cancel all non-contingent (i.e. SL/TP) orders."""
         for order in self:
@@ -355,6 +378,7 @@ class Position:
         if self.position:
             ...  # we have a position, either long or short
     """
+
     def __init__(self, broker: '_Broker'):
         self.__broker = broker
 
@@ -417,14 +441,18 @@ class Order:
     [filled]: https://www.investopedia.com/terms/f/fill.asp
     [Good 'Til Canceled]: https://www.investopedia.com/terms/g/gtc.asp
     """
-    def __init__(self, broker: '_Broker',
-                 size: float,
-                 limit_price: Optional[float] = None,
-                 stop_price: Optional[float] = None,
-                 sl_price: Optional[float] = None,
-                 tp_price: Optional[float] = None,
-                 parent_trade: Optional['Trade'] = None,
-                 tag: object = None):
+
+    def __init__(
+            self,
+            broker: '_Broker',
+            size: float,
+            limit_price: Optional[float] = None,
+            stop_price: Optional[float] = None,
+            sl_price: Optional[float] = None,
+            tp_price: Optional[float] = None,
+            parent_trade: Optional['Trade'] = None,
+            tag: object = None
+    ):
         self.__broker = broker
         assert size != 0
         self.__size = size
@@ -441,16 +469,20 @@ class Order:
         return self
 
     def __repr__(self):
-        return '<Order {}>'.format(', '.join(f'{param}={try_(lambda: round(value, 5), value)!r}'
-                                             for param, value in (
-                                                 ('size', self.__size),
-                                                 ('limit', self.__limit_price),
-                                                 ('stop', self.__stop_price),
-                                                 ('sl', self.__sl_price),
-                                                 ('tp', self.__tp_price),
-                                                 ('contingent', self.is_contingent),
-                                                 ('tag', self.__tag),
-                                             ) if value is not None))  # noqa: E126
+        return '<Order {}>'.format(
+            ', '.join(
+                f'{param}={try_(lambda: round(value, 5), value)!r}'
+                for param, value in (
+                    ('size', self.__size),
+                    ('limit', self.__limit_price),
+                    ('stop', self.__stop_price),
+                    ('sl', self.__sl_price),
+                    ('tp', self.__tp_price),
+                    ('contingent', self.is_contingent),
+                    ('tag', self.__tag),
+                ) if value is not None
+            )
+        )  # noqa: E126
 
     def cancel(self):
         """Cancel the order."""
@@ -564,7 +596,15 @@ class Trade:
     When an `Order` is filled, it results in an active `Trade`.
     Find active trades in `Strategy.trades` and closed, settled trades in `Strategy.closed_trades`.
     """
-    def __init__(self, broker: '_Broker', size: int, entry_price: float, entry_bar, tag):
+
+    def __init__(
+            self,
+            broker: '_Broker',
+            size: int,
+            entry_price: float,
+            entry_bar,
+            tag
+    ):
         self.__broker = broker
         self.__size = size
         self.__entry_price = entry_price
@@ -729,13 +769,20 @@ class Trade:
     def tp(self, price: float):
         self.__set_contingent('tp', price)
 
-    def __set_contingent(self, type, price):
+    def __set_contingent(
+            self,
+            type: str,
+            price: float
+    ):
         assert type in ('sl', 'tp')
         assert price is None or 0 < price < np.inf, f'Make sure 0 < price < inf! price: {price}'
+
         attr = f'_{self.__class__.__qualname__}__{type}_order'
         order: Order = getattr(self, attr)
+
         if order:
             order.cancel()
+
         if price:
             kwargs = {'stop': price} if type == 'sl' else {'limit': price}
             order = self.__broker.new_order(-self.size, trade=self, tag=self.tag, **kwargs)
@@ -743,8 +790,19 @@ class Trade:
 
 
 class _Broker:
-    def __init__(self, *, data, cash, spread, commission, margin,
-                 trade_on_close, hedging, exclusive_orders, index):
+    def __init__(
+            self,
+            *,
+            data: _Data,
+            cash: int | float,
+            spread: float,
+            commission: float,
+            margin: int | float,
+            trade_on_close: bool,
+            hedging: bool,
+            exclusive_orders: bool,
+            index: int
+    ):
         assert cash > 0, f"cash should be > 0, is {cash}"
         assert 0 < margin <= 1, f"margin should be between 0 and 1, is {margin}"
         self._data: _Data = data
@@ -781,15 +839,17 @@ class _Broker:
     def __repr__(self):
         return f'<Broker: {self._cash:.0f}{self.position.pl:+.1f} ({len(self.trades)} trades)>'
 
-    def new_order(self,
-                  size: float,
-                  limit: Optional[float] = None,
-                  stop: Optional[float] = None,
-                  sl: Optional[float] = None,
-                  tp: Optional[float] = None,
-                  tag: object = None,
-                  *,
-                  trade: Optional[Trade] = None) -> Order:
+    def new_order(
+            self,
+            size: float,
+            limit: Optional[float] = None,
+            stop: Optional[float] = None,
+            sl: Optional[float] = None,
+            tp: Optional[float] = None,
+            tag: object = None,
+            *,
+            trade: Optional[Trade] = None
+    ) -> Order:
         """
         Argument size indicates whether the order is long or short
         """
@@ -1064,7 +1124,12 @@ class _Broker:
 
         self._close_trade(close_trade, price, time_index)
 
-    def _close_trade(self, trade: Trade, price: float, time_index: int):
+    def _close_trade(
+            self,
+            trade: Trade,
+            price: float,
+            time_index: int
+    ):
         self.trades.remove(trade)
         if trade._sl_order:
             self.orders.remove(trade._sl_order)
@@ -1179,23 +1244,27 @@ class Backtest:
     [FIFO]: https://www.investopedia.com/terms/n/nfa-compliance-rule-2-43b.asp
     [active and ongoing]: https://kernc.github.io/backtesting.py/doc/backtesting/backtesting.html#backtesting.backtesting.Strategy.trades
     """  # noqa: E501
-    def __init__(self,
-                 data: pd.DataFrame,
-                 strategy: Type[Strategy],
-                 *,
-                 cash: float = 10_000,
-                 spread: float = .0,
-                 commission: Union[float, Tuple[float, float]] = .0,
-                 margin: float = 1.,
-                 trade_on_close=False,
-                 hedging=False,
-                 exclusive_orders=False,
-                 finalize_trades=False,
-                 ):
+
+    def __init__(
+            self,
+            data: pd.DataFrame,
+            strategy: Type[Strategy],
+            *,
+            cash: float = 10_000,
+            spread: float = .0,
+            commission: Union[float, Tuple[float, float]] = .0,
+            margin: float = 1.,
+            trade_on_close: bool = False,
+            hedging: bool = False,
+            exclusive_orders: bool = False,
+            finalize_trades: bool = False,
+    ):
         if not (isinstance(strategy, type) and issubclass(strategy, Strategy)):
             raise TypeError('`strategy` must be a Strategy sub-type')
+
         if not isinstance(data, pd.DataFrame):
             raise TypeError("`data` must be a pandas.DataFrame with columns")
+
         if not isinstance(spread, Number):
             raise TypeError('`spread` must be a float value, percent of '
                             'entry order price')
@@ -1209,10 +1278,10 @@ class Backtest:
 
         # Convert index to datetime index
         if (not isinstance(data.index, pd.DatetimeIndex) and
-            not isinstance(data.index, pd.RangeIndex) and
-            # Numeric index with most large numbers
-            (data.index.is_numeric() and
-             (data.index > pd.Timestamp('1975').timestamp()).mean() > .8)):
+                not isinstance(data.index, pd.RangeIndex) and
+                # Numeric index with most large numbers
+                (data.index.is_numeric() and
+                 (data.index > pd.Timestamp('1975').timestamp()).mean() > .8)):
             try:
                 data.index = pd.to_datetime(data.index, infer_datetime_format=True)
             except ValueError:
@@ -1223,23 +1292,28 @@ class Backtest:
 
         if len(data) == 0:
             raise ValueError('OHLC `data` is empty')
+
         if len(data.columns.intersection({'Open', 'High', 'Low', 'Close', 'Volume'})) != 5:
             raise ValueError("`data` must be a pandas.DataFrame with columns "
                              "'Open', 'High', 'Low', 'Close', and (optionally) 'Volume'")
+
         if data[['Open', 'High', 'Low', 'Close']].isnull().values.any():
             raise ValueError('Some OHLC values are missing (NaN). '
                              'Please strip those lines with `df.dropna()` or '
                              'fill them in with `df.interpolate()` or whatever.')
+
         if np.any(data['Close'] > cash):
             warnings.warn('Some prices are larger than initial cash value. Note that fractional '
                           'trading is not supported by this class. If you want to trade Bitcoin, '
                           'increase initial cash, or trade μBTC or satoshis instead (see e.g. class '
                           '`backtesting.lib.FractionalBacktest`.',
                           stacklevel=2)
+
         if not data.index.is_monotonic_increasing:
             warnings.warn('Data index is not sorted in ascending order. Sorting.',
                           stacklevel=2)
             data = data.sort_index()
+
         if not isinstance(data.index, pd.DatetimeIndex):
             warnings.warn('Data index is not datetime. Assuming simple periods, '
                           'but `pd.DateTimeIndex` is advised.',
@@ -1370,17 +1444,20 @@ class Backtest:
 
         return self._results
 
-    def optimize(self, *,
-                 maximize: Union[str, Callable[[pd.Series], float]] = 'SQN',
-                 method: str = 'grid',
-                 max_tries: Optional[Union[int, float]] = None,
-                 constraint: Optional[Callable[[dict], bool]] = None,
-                 return_heatmap: bool = False,
-                 return_optimization: bool = False,
-                 random_state: Optional[int] = None,
-                 **kwargs) -> Union[pd.Series,
-                                    Tuple[pd.Series, pd.Series],
-                                    Tuple[pd.Series, pd.Series, dict]]:
+    def optimize(
+            self,
+            *,
+            maximize: Union[str, Callable[[pd.Series], float]] = 'SQN',
+            method: str = 'grid',
+            max_tries: Optional[Union[int, float]] = None,
+            constraint: Optional[Callable[[dict], bool]] = None,
+            return_heatmap: bool = False,
+            return_optimization: bool = False,
+            random_state: Optional[int] = None,
+            **kwargs
+    ) -> Union[pd.Series,
+    Tuple[pd.Series, pd.Series],
+    Tuple[pd.Series, pd.Series, dict]]:
         """
         Optimize strategy parameters to an optimal combination.
         Returns result `pd.Series` of the best run.
@@ -1526,6 +1603,7 @@ class Backtest:
                     SharedMemoryManager() as smm:
                 with patch(self, '_data', None):
                     bt = copy(self)  # bt._data will be reassigned in _mp_task worker
+
                 results = _tqdm(
                     pool.imap(Backtest._mp_task,
                               ((bt, smm.df2shm(self._data), params_batch)
@@ -1741,7 +1819,7 @@ class Backtest:
             filename=filename,
             plot_width=plot_width,
             plot_height=plot_height,
-            autoscale_y = autoscale_y,
+            autoscale_y=autoscale_y,
             plot_equity=plot_equity,
             plot_return=plot_return,
             plot_pl=plot_pl,

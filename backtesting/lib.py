@@ -30,7 +30,6 @@ from .backtesting import Backtest, Strategy
 
 __pdoc__ = {}
 
-
 OHLCV_AGG = OrderedDict((
     ('Open', 'first'),
     ('High', 'max'),
@@ -355,6 +354,7 @@ def random_ohlc_data(example_data: pd.DataFrame, *,
     >>> next(ohlc_generator)  # returns new random data
     ...
     """
+
     def shuffle(x):
         return x.sample(frac=frac, replace=frac > 1, random_state=random_state)
 
@@ -522,23 +522,30 @@ class FractionalBacktest(Backtest):
 
     [satoshi]: https://en.wikipedia.org/wiki/Bitcoin#Units_and_divisibility
     """
-    def __init__(self,
-                 data,
-                 *args,
-                 fractional_unit=1 / 100e6,
-                 **kwargs):
+
+    def __init__(
+            self,
+            data,
+            *args,
+            fractional_unit=1 / 100e6,
+            **kwargs
+    ):
+
         if 'satoshi' in kwargs:
             warnings.warn(
                 'Parameter `FractionalBacktest(..., satoshi=)` is deprecated. '
                 'Use `FractionalBacktest(..., fractional_unit=)`.',
                 category=DeprecationWarning, stacklevel=2)
             fractional_unit = 1 / kwargs.pop('satoshi')
+
         self._fractional_unit = fractional_unit
         self.__data: pd.DataFrame = data.copy(deep=False)  # Shallow copy
+
         for col in ('Open', 'High', 'Low', 'Close',):
             self.__data[col] = self.__data[col] * self._fractional_unit
         for col in ('Volume',):
             self.__data[col] = self.__data[col] / self._fractional_unit
+
         with warnings.catch_warnings(record=True):
             warnings.filterwarnings(action='ignore', message='frac')
             super().__init__(data, *args, **kwargs)
@@ -578,6 +585,7 @@ class MultiBacktest:
         stats_per_ticker: pd.DataFrame = btm.run(fast=10, slow=20)
         heatmap_per_ticker: pd.DataFrame = btm.optimize(...)
     """
+
     def __init__(self, df_list, strategy_cls, **kwargs):
         self._dfs = df_list
         self._strategy = strategy_cls

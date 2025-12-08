@@ -120,6 +120,7 @@ def compute_stats(
     day_returns = np.array(np.nan)
     annual_trading_days = np.nan
     is_datetime_index = isinstance(index, pd.DatetimeIndex)
+
     if is_datetime_index:
         freq_days = cast(pd.Timedelta, _data_period(index)).days
         have_weekends = index.dayofweek.to_series().between(5, 6).mean() > 2 / 7 * .6
@@ -141,6 +142,7 @@ def compute_stats(
     s.loc['Volatility (Ann.) [%]'] = np.sqrt((day_returns.var(ddof=int(bool(day_returns.shape))) + (1 + gmean_day_return)**2)**annual_trading_days - (1 + gmean_day_return)**(2 * annual_trading_days)) * 100  # noqa: E501
     # s.loc['Return (Ann.) [%]'] = gmean_day_return * annual_trading_days * 100
     # s.loc['Risk (Ann.) [%]'] = day_returns.std(ddof=1) * np.sqrt(annual_trading_days) * 100
+
     if is_datetime_index:
         time_in_years = (s.loc['Duration'].days + s.loc['Duration'].seconds / 86400) / annual_trading_days
         s.loc['CAGR [%]'] = ((s.loc['Equity Final [$]'] / equity[0])**(1 / time_in_years) - 1) * 100 if time_in_years else np.nan  # noqa: E501
@@ -160,6 +162,7 @@ def compute_stats(
         # len == 0 on dummy call `stats_keys = compute_stats(...)` pre optimization
         cov_matrix = np.cov(equity_log_returns, market_log_returns)
         beta = cov_matrix[0, 1] / cov_matrix[1, 1]
+
     # Jensen CAPM Alpha: can be strongly positive when beta is negative and B&H Return is large
     s.loc['Alpha [%]'] = s.loc['Return [%]'] - risk_free_rate * 100 - beta * (s.loc['Buy & Hold Return [%]'] - risk_free_rate * 100)  # noqa: E501
     s.loc['Beta'] = beta
