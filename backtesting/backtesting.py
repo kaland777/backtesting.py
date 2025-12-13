@@ -1403,7 +1403,6 @@ class Backtest:
                 data._set_length(i + 1)
 
                 for attr, indicator in indicator_attrs:
-
                     # Slice indicator on the last dimension (case of 2d indicator)
                     setattr(strategy, attr, indicator[..., :i + 1])
 
@@ -1456,6 +1455,7 @@ class Backtest:
             return_heatmap: bool = False,
             return_optimization: bool = False,
             random_state: Optional[int] = None,
+            max_batch_size: int = 20,
             **kwargs
     ) -> Union[pd.Series,
     Tuple[pd.Series, pd.Series],
@@ -1594,11 +1594,13 @@ class Backtest:
                 warnings.warn(f'Searching for best of {len(param_combos)} configurations.',
                               stacklevel=2)
 
-            heatmap = pd.Series(np.nan,
-                                name=maximize_key,
-                                index=pd.MultiIndex.from_tuples(
-                                    [p.values() for p in param_combos],
-                                    names=next(iter(param_combos)).keys()))
+            heatmap = pd.Series(
+                np.nan,
+                name=maximize_key,
+                index=pd.MultiIndex.from_tuples(
+                    [p.values() for p in param_combos],
+                    names=next(iter(param_combos)).keys())
+            )
 
             from . import Pool
             with Pool() as pool, \
@@ -1607,15 +1609,18 @@ class Backtest:
                 with patch(self, '_data', None):
                     bt = copy(self)  # bt._data will be reassigned in _mp_task worker
 
-                results = _tqdm(
-                    pool.imap(Backtest._mp_task,
-                              ((bt, smm.df2shm(self._data), params_batch)
-                               for params_batch in _batch(param_combos))),
-                    total=len(param_combos),
-                    desc='Backtest.optimize'
+                param_batches = list(_batch(param_combos, max_batch_size))
+
+                evaluated_batches = _tqdm(
+                    pool.imap_unordered(
+                        Backtest._mp_task,
+                        ((bt, smm.df2shm(self._data), params_batch) for params_batch in param_batches)
+                    ),
+                    total=len(param_batches),
+                    desc=f'Backtest.optimize (batches={len(param_batches)}, combinations={len(param_combos)})'
                 )
 
-                for param_batch, result in zip(_batch(param_combos), results):
+                for param_batch, result in evaluated_batches:
                     for params, stats in zip(param_batch, result):
                         if stats is not None:
                             heatmap[tuple(params.values())] = maximize(stats)
@@ -1633,8 +1638,8 @@ class Backtest:
             return stats
 
         def _optimize_sambo() -> Union[pd.Series,
-                                       Tuple[pd.Series, pd.Series],
-                                       Tuple[pd.Series, pd.Series, dict]]:
+        Tuple[pd.Series, pd.Series],
+        Tuple[pd.Series, pd.Series, dict]]:
             try:
                 import sambo
             except ImportError:
@@ -1713,13 +1718,13 @@ class Backtest:
         return output
 
     @staticmethod
-    def _mp_task(arg):
+    def _mp_task(arg: tuple) -> tuple:
         bt, data_shm, params_batch = arg
         bt._data, shm = SharedMemoryManager.shm2df(data_shm)
         try:
-            return [stats.filter(regex='^[^_]') if stats['# Trades'] else None
-                    for stats in (bt.run(**params)
-                                  for params in params_batch)]
+            return params_batch, [stats.filter(regex='^[^_]') if stats['# Trades'] else None
+                                  for stats in (bt.run(**params)
+                                                for params in params_batch)]
         finally:
             for shmem in shm:
                 shmem.close()
@@ -1842,9 +1847,9 @@ class Backtest:
 # NOTE: Don't put anything public below this __all__ list
 
 __all__ = [getattr(v, '__name__', k)
-           for k, v in globals().items()                        # export
+           for k, v in globals().items()  # export
            if ((callable(v) and getattr(v, '__module__', None) == __name__ or  # callables from this module; getattr for Python 3.9; # noqa: E501
-                k.isupper()) and                                # or CONSTANTS
+                k.isupper()) and  # or CONSTANTS
                not getattr(v, '__name__', k).startswith('_'))]  # neither marked internal
 
 # NOTE: Don't put anything public below here. See above.
