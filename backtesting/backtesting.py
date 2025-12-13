@@ -53,7 +53,7 @@ class Strategy(metaclass=ABCMeta):
             self,
             broker: _Broker,
             data: _Data,
-            params
+            params: dict
     ):
         self._indicators = []
         self._broker: _Broker = broker
@@ -1401,7 +1401,9 @@ class Backtest:
                            unit='bar', mininterval=2, miniters=100):
                 # Prepare data and indicators for `next` call
                 data._set_length(i + 1)
+
                 for attr, indicator in indicator_attrs:
+
                     # Slice indicator on the last dimension (case of 2d indicator)
                     setattr(strategy, attr, indicator[..., :i + 1])
 
@@ -1601,6 +1603,7 @@ class Backtest:
             from . import Pool
             with Pool() as pool, \
                     SharedMemoryManager() as smm:
+
                 with patch(self, '_data', None):
                     bt = copy(self)  # bt._data will be reassigned in _mp_task worker
 
@@ -1611,6 +1614,7 @@ class Backtest:
                     total=len(param_combos),
                     desc='Backtest.optimize'
                 )
+
                 for param_batch, result in zip(_batch(param_combos), results):
                     for params, stats in zip(param_batch, result):
                         if stats is not None:
