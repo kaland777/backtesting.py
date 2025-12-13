@@ -8,6 +8,7 @@ from functools import partial
 from itertools import chain
 from multiprocessing import resource_tracker as _mprt
 from multiprocessing import shared_memory as _mpshm
+from multiprocessing import current_process
 from numbers import Number
 from threading import Lock
 from typing import Dict, List, Optional, Sequence, Union, cast
@@ -15,12 +16,12 @@ from typing import Dict, List, Optional, Sequence, Union, cast
 import numpy as np
 import pandas as pd
 
-try:
-    from tqdm.auto import tqdm as _tqdm
-    _tqdm = partial(_tqdm, leave=False)
-except ImportError:
-    def _tqdm(seq, **_):
-        return seq
+from tqdm.std import tqdm
+
+def _tqdm(iterable, **kwargs):
+    if current_process().name == "MainProcess":
+        return tqdm(iterable, leave=False, **kwargs)
+    return iterable
 
 
 def try_(lazy_func, default=None, exception=Exception):
@@ -65,9 +66,9 @@ def _as_list(value) -> List:
     return [value]
 
 
-def _batch(seq):
+def _batch(seq, max_batch_size: int = 20):
     # XXX: Replace with itertools.batched
-    n = np.clip(int(len(seq) // (os.cpu_count() or 1)), 1, 300)
+    n = np.clip(int(len(seq) // (os.cpu_count() or 1)), 1, max_batch_size)
     for i in range(0, len(seq), n):
         yield seq[i:i + n]
 
