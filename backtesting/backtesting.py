@@ -1722,9 +1722,16 @@ class Backtest:
         bt, data_shm, params_batch = arg
         bt._data, shm = SharedMemoryManager.shm2df(data_shm)
         try:
-            return params_batch, [stats.filter(regex='^[^_]') if stats['# Trades'] else None
-                                  for stats in (bt.run(**params)
-                                                for params in params_batch)]
+
+            backtest_result = [
+                stats.filter(regex='^[^_]') if stats['# Trades'] else None
+                for stats in (
+                    bt.run(**params)
+                    for params in params_batch
+                )
+            ]
+
+            return params_batch, backtest_result
         finally:
             for shmem in shm:
                 shmem.close()
