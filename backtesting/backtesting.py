@@ -1397,8 +1397,13 @@ class Backtest:
         # np.nan >= 3 is not invalid; it's False.
         with np.errstate(invalid='ignore'):
 
-            for i in _tqdm(range(start, len(self._data)), desc=self.run.__qualname__,
-                           unit='bar', mininterval=2, miniters=100):
+            for i in _tqdm(
+                    range(start, len(self._data)),
+                    desc=self.run.__qualname__,
+                    unit='bar',
+                    mininterval=2,
+                    miniters=100
+            ):
                 # Prepare data and indicators for `next` call
                 data._set_length(i + 1)
 
@@ -1578,15 +1583,22 @@ class Backtest:
 
         def _optimize_grid() -> Union[pd.Series, Tuple[pd.Series, pd.Series]]:
             rand = default_rng(random_state).random
+
             grid_frac = (1 if max_tries is None else
                          max_tries if 0 < max_tries <= 1 else
                          max_tries / _grid_size())
-            param_combos = [dict(params)  # back to dict so it pickles
-                            for params in (AttrDict(params)
-                                           for params in product(*(zip(repeat(k), _tuple(v))
-                                                                   for k, v in kwargs.items())))
-                            if constraint(params)
-                            and rand() <= grid_frac]
+
+            param_combos = [
+                dict(params)  # back to dict so it pickles
+                for params in (AttrDict(params)
+                               for params in product(
+                                    *(zip(repeat(k), _tuple(v))
+                                      for k, v in kwargs.items())
+                                    )
+                               )
+                if constraint(params) and rand() <= grid_frac
+            ]
+
             if not param_combos:
                 raise ValueError('No admissible parameter combinations to test')
 
@@ -1610,12 +1622,11 @@ class Backtest:
                     bt = copy(self)  # bt._data will be reassigned in _mp_task worker
 
                 param_batches = list(_batch(param_combos, max_batch_size))
+                shared_data_meta = smm.df2shm(self._data)
+                tasks = ((bt, shared_data_meta, params_batch) for params_batch in param_batches)
 
                 evaluated_batches = _tqdm(
-                    pool.imap_unordered(
-                        Backtest._mp_task,
-                        ((bt, smm.df2shm(self._data), params_batch) for params_batch in param_batches)
-                    ),
+                    pool.imap_unordered(Backtest._mp_task, tasks),
                     total=len(param_batches),
                     desc=f'Backtest.optimize (batches={len(param_batches)}, combinations={len(param_combos)})'
                 )
