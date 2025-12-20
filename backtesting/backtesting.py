@@ -1457,13 +1457,11 @@ class Backtest:
             method: str = 'grid',
             max_tries: Optional[Union[int, float]] = None,
             constraint: Optional[Callable[[dict], bool]] = None,
-            return_heatmap: bool = False,
             return_optimization: bool = False,
             random_state: Optional[int] = None,
             max_batch_size: int = 20,
             **kwargs
-    ) -> Union[pd.Series,
-    Tuple[pd.Series, pd.Series],
+    ) -> Union[Tuple[pd.Series, pd.DataFrame],
     Tuple[pd.Series, pd.Series, dict]]:
         """
         Optimize strategy parameters to an optimal combination.
@@ -1528,10 +1526,10 @@ class Backtest:
 
         maximize_key = None
         if isinstance(maximize, str):
-            maximize_key = str(maximize)
             if maximize not in dummy_stats().index:
                 raise ValueError('`maximize`, if str, must match a key in pd.Series '
                                  'result of backtest.run()')
+            maximize_key = str(maximize)
 
             def maximize(stats: pd.Series, _key=maximize):
                 return stats[_key]
@@ -1581,7 +1579,7 @@ class Backtest:
                            if constraint(AttrDict(p)))
             return size
 
-        def _optimize_grid() -> Union[pd.Series, Tuple[pd.Series, pd.Series]]:
+        def _optimize_grid() -> Union[pd.Series, Tuple[pd.Series, pd.DataFrame]]:
             rand = default_rng(random_state).random
 
             grid_frac = (1 if max_tries is None else
@@ -1603,16 +1601,15 @@ class Backtest:
                 raise ValueError('No admissible parameter combinations to test')
 
             if len(param_combos) > 300:
-                warnings.warn(f'Searching for best of {len(param_combos)} configurations.',
-                              stacklevel=2)
+                warnings.warn(f'Searching for best of {len(param_combos)} configurations.', stacklevel=2)
 
-            heatmap = pd.Series(
-                np.nan,
-                name=maximize_key,
-                index=pd.MultiIndex.from_tuples(
-                    [p.values() for p in param_combos],
-                    names=next(iter(param_combos)).keys())
-            )
+            objective_col = None
+            if maximize_key is None:
+                objective_col = (
+                        getattr(maximize, '__name__', None)
+                        or _as_str(maximize)
+                        or 'maximize'
+                )
 
             from . import Pool
             with Pool() as pool, \
@@ -1631,22 +1628,28 @@ class Backtest:
                     desc=f'Backtest.optimize (batches={len(param_batches)}, combinations={len(param_combos)})'
                 )
 
+                optimize_rows: List[dict] = []
+
                 for param_batch, result in evaluated_batches:
                     for params, stats in zip(param_batch, result):
                         if stats is not None:
-                            heatmap[tuple(params.values())] = maximize(stats)
+                            row = dict(params)
 
-            if pd.isnull(heatmap).all():
-                # No trade was made in any of the runs. Just make a random
-                # run so we get some, if empty, results
-                stats = self.run(**param_combos[0])
-            else:
-                best_params = heatmap.idxmax(skipna=True)
-                stats = self.run(**dict(zip(heatmap.index.names, best_params)))
+                            if objective_col:
+                                try:
+                                    row[objective_col] = maximize(stats)
+                                except Exception as e:
+                                    print(f'Error found while executing callback funtion: {e}')
+                                    row[objective_col] = np.nan
 
-            if return_heatmap:
-                return stats, heatmap
-            return stats
+                            row.update(stats)
+                            optimize_rows.append(row)
+
+                        else:
+                            print(f'Backtest results not found for {params}')
+
+            optimize_results = pd.DataFrame(optimize_rows).drop(columns=['Start', 'End', 'Duration'])
+            return stats, optimize_results
 
         def _optimize_sambo() -> Union[pd.Series,
         Tuple[pd.Series, pd.Series],
@@ -1708,12 +1711,11 @@ class Backtest:
             stats = self.run(**dict(zip(kwargs.keys(), res.x)))
             output = [stats]
 
-            if return_heatmap:
-                heatmap = pd.Series(dict(zip(map(tuple, res.xv), -res.funv)),
-                                    name=maximize_key)
-                heatmap.index.names = kwargs.keys()
-                heatmap.sort_index(inplace=True)
-                output.append(heatmap)
+            heatmap = pd.Series(dict(zip(map(tuple, res.xv), -res.funv)),
+                                name=maximize_key)
+            heatmap.index.names = kwargs.keys()
+            heatmap.sort_index(inplace=True)
+            output.append(heatmap)
 
             if return_optimization:
                 output.append(res)
